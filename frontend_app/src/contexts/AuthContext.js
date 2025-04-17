@@ -32,12 +32,22 @@ export const AuthProvider = ({ children }) => {
       }
 
       try {
+        // This GET request might be happening without the Authorization header
         const response = await axios.get('/api/auth/user');
         setUser(response.data);
         setIsAuthenticated(true);
       } catch (error) {
-        console.error('Authentication error:', error);
-        logout();
+        console.error('Authentication error during verifyToken:', error);
+        // Removed logout() call here to prevent immediate logout after successful login
+        // If the token is truly invalid, subsequent API calls will fail anyway,
+        // or the token will be cleared on next page load if localStorage is cleared.
+        // We might still want to clear state here if needed, but logout() is too aggressive.
+        setToken(null); // Clear potentially invalid token from state
+        setUser(null);
+        setIsAuthenticated(false);
+        localStorage.removeItem('token'); // Also remove from storage
+        delete axios.defaults.headers.common['Authorization']; // Clear header
+
       } finally {
         setLoading(false);
       }
