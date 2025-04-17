@@ -32,7 +32,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       try {
-        const response = await axios.get('/auth/user');
+        const response = await axios.get('/api/auth/user');
         setUser(response.data);
         setIsAuthenticated(true);
       } catch (error) {
@@ -49,7 +49,7 @@ export const AuthProvider = ({ children }) => {
   // Login function
   const login = async (username, password) => {
     try {
-      const response = await axios.post('/auth/login', { username, password });
+      const response = await axios.post('/api/auth/login', { username, password });
       const { access_token, user } = response.data;
       
       localStorage.setItem('token', access_token);
@@ -70,7 +70,7 @@ export const AuthProvider = ({ children }) => {
   // Register function
   const register = async (username, email, password) => {
     try {
-      await axios.post('/auth/register', { username, email, password });
+      await axios.post('/api/auth/register', { username, email, password });
       return { success: true };
     } catch (error) {
       console.error('Registration error:', error);
