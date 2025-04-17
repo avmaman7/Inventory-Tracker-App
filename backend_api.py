@@ -48,7 +48,7 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(128), nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)  # Increased length from 128
     role = db.Column(db.String(20), default='user')  # 'admin' or 'user'
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
@@ -109,13 +109,15 @@ class InventoryChange(db.Model):
 
 # --- Temporary Route for Initial DB Setup ---
 # !!! Visit this route ONCE manually after deployment !!!
+# !!! WARNING: This will DELETE all existing data in the tables !!!
 # !!! Then consider removing or securing it !!!
 @app.route('/_initialize_database_once')
 def initialize_database():
     try:
         with app.app_context():
-            db.create_all()
-        return "Database tables created (or already existed).", 200
+            db.drop_all()  # Drop existing tables
+            db.create_all() # Recreate tables with updated schema
+        return "Database tables DROPPED and RECREATED successfully.", 200
     except Exception as e:
         return f"An error occurred: {str(e)}", 500
 # --- End Temporary Route ---
