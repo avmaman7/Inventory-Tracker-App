@@ -1,3 +1,6 @@
+import eventlet
+eventlet.monkey_patch()
+
 """
 Backend API implementation for the Mobile Inventory Tracking Application.
 This module sets up the Flask API with RESTful endpoints and authentication.
