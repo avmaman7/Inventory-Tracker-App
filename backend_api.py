@@ -178,7 +178,8 @@ def login():
 
 @app.route('/api/auth/user', methods=['GET'])
 @jwt_required()
-def get_user():
+def get_current_user():
+    print(f"DEBUG: Get User - Received Authorization Header: {request.headers.get('Authorization')}")
     user_id = get_jwt_identity()
     user = User.query.get(user_id)
     
