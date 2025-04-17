@@ -67,17 +67,31 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (username, password) => {
     try {
+      console.log('Login function: Sending request...'); 
       const response = await axios.post('/api/auth/login', { username, password });
-      const { access_token, user } = response.data;
+      console.log('Login function: Received response data:', response.data); 
       
+      const { access_token, user } = response.data;
+      console.log('Login function: Extracted access_token:', access_token); 
+      console.log('Login function: Extracted user:', user); 
+
+      if (!access_token) {
+        console.error('Login function: access_token is missing in response!');
+        throw new Error('Access token missing in login response.');
+      }
+      
+      console.log('Login function: Attempting to set token in localStorage...'); 
       localStorage.setItem('token', access_token);
+      console.log('Login function: Token set in localStorage.'); 
+      
       setToken(access_token); 
       setUser(user);
       setIsAuthenticated(true);
+      console.log('Login function: Authentication state set to true.'); 
       
       return { success: true };
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('Login error caught:', error); 
       setToken(null);
       setUser(null);
       setIsAuthenticated(false);
