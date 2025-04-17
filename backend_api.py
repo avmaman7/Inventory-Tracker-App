@@ -169,10 +169,12 @@ def login():
     # Create access token
     access_token = create_access_token(identity=user.id)
     
-    return jsonify({
+    response_data = {
         'access_token': access_token,
         'user': user.to_dict()
-    }), 200
+    }
+    print(f"DEBUG: Sending login response: {response_data}")
+    return jsonify(response_data), 200
 
 @app.route('/api/auth/user', methods=['GET'])
 @jwt_required()
