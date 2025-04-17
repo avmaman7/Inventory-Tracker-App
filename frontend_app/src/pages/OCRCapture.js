@@ -125,7 +125,7 @@ const OCRCapture = () => {
       // Create form data
       console.log("DEBUG OCR: Preparing FormData and checking token");
       formData = new FormData();
-      formData.append('invoice', image); // Ensure key matches backend
+      formData.append('invoice_image', image); // Ensure key matches backend
       console.log("DEBUG OCR: FormData created successfully");
       
       token = localStorage.getItem('token');
