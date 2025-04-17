@@ -92,11 +92,13 @@ const OCRCapture = () => {
   
   // Handle camera capture
   const handleCameraCapture = () => {
+    fileInputRef.current.setAttribute('capture', 'environment');
     fileInputRef.current.click();
   };
   
   // Handle gallery selection
   const handleGallerySelect = () => {
+    fileInputRef.current.removeAttribute('capture');
     fileInputRef.current.click();
   };
   
@@ -246,7 +248,6 @@ const OCRCapture = () => {
               ref={fileInputRef}
               style={{ display: 'none' }}
               onChange={handleFileSelect}
-              capture="environment"
             />
             
             {imagePreview ? (
