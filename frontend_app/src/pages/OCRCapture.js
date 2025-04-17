@@ -29,7 +29,8 @@ import {
   Check as CheckIcon,
   Close as CloseIcon,
   NavigateNext as NextIcon,
-  NavigateBefore as BackIcon
+  NavigateBefore as BackIcon,
+  Add as AddIcon
 } from '@mui/icons-material';
 import Layout from '../components/Layout/Layout';
 import { useInventoryUpdates } from '../hooks/useInventoryUpdates';
