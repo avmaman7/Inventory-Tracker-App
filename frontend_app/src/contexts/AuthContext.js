@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect, useContext } from 'react';
+import React, { createContext, useState, useEffect, useContext, useRef, useMemo } from 'react';
 import axios from 'axios';
 
 const AuthContext = createContext();
@@ -7,81 +7,81 @@ export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [token, setToken] = useState(localStorage.getItem('token'));
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [token, setToken] = useState(() => localStorage.getItem('token')); // Initialize from localStorage
+  const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('token')); // Initialize based on token presence
   const [loading, setLoading] = useState(true);
 
-  // Configure axios defaults
-  useEffect(() => {
-    const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
-    axios.defaults.baseURL = apiUrl;
-    
-    if (token) {
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-    } else {
-      delete axios.defaults.headers.common['Authorization'];
-    }
-  }, [token]);
+  const axiosInterceptor = useMemo(() => {
+    const interceptor = axios.interceptors.request.use(
+      (config) => {
+        const currentToken = localStorage.getItem('token'); 
+        if (currentToken) {
+          config.headers['Authorization'] = `Bearer ${currentToken}`;
+        }
+        config.baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+        return config;
+      },
+      (error) => Promise.reject(error)
+    );
+    return interceptor; 
+  }, []);
 
-  // Check if user is authenticated on initial load or token change
+  useEffect(() => {
+    return () => {
+      axios.interceptors.request.eject(axiosInterceptor);
+    };
+  }, [axiosInterceptor]);
+
   useEffect(() => {
     const verifyToken = async () => {
-      // If login() just set isAuthenticated, don't immediately try to re-verify.
-      if (isAuthenticated) {
+      if (isAuthenticated) { 
         setLoading(false);
         return;
       }
-
-      if (!token) {
+      
+      const initialToken = localStorage.getItem('token'); 
+      if (!initialToken) {
         setLoading(false);
+        setIsAuthenticated(false);
+        setUser(null);
         return;
       }
 
       try {
-        console.log('verifyToken: Checking Authorization header before request:', axios.defaults.headers.common['Authorization']);
-        
-        // This GET request might be happening without the Authorization header
         const response = await axios.get('/api/auth/user');
         setUser(response.data);
         setIsAuthenticated(true);
       } catch (error) {
         console.error('Authentication error during verifyToken:', error);
-        // Removed logout() call here to prevent immediate logout after successful login
-        // If the token is truly invalid, subsequent API calls will fail anyway,
-        // or the token will be cleared on next page load if localStorage is cleared.
-        // We might still want to clear state here if needed, but logout() is too aggressive.
-        setToken(null); // Clear potentially invalid token from state
+        setToken(null);
         setUser(null);
         setIsAuthenticated(false);
-        localStorage.removeItem('token'); // Also remove from storage
-        delete axios.defaults.headers.common['Authorization']; // Clear header
-
+        localStorage.removeItem('token');
       } finally {
         setLoading(false);
       }
     };
 
     verifyToken();
-  }, [token, isAuthenticated]);
+  }, [isAuthenticated]); 
 
-  // Login function
   const login = async (username, password) => {
     try {
       const response = await axios.post('/api/auth/login', { username, password });
       const { access_token, user } = response.data;
       
-      // Immediately set the header for subsequent requests
-      axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
-      
-      // Set state and localStorage
       localStorage.setItem('token', access_token);
-      setToken(access_token);
+      setToken(access_token); 
       setUser(user);
       setIsAuthenticated(true);
       
       return { success: true };
     } catch (error) {
       console.error('Login error:', error);
+      setToken(null);
+      setUser(null);
+      setIsAuthenticated(false);
+      localStorage.removeItem('token');
       return { 
         success: false, 
         message: error.response?.data?.error || 'Login failed. Please try again.' 
@@ -89,7 +89,6 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Register function
   const register = async (username, email, password) => {
     try {
       await axios.post('/api/auth/register', { username, email, password });
@@ -103,13 +102,11 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Logout function
   const logout = () => {
     localStorage.removeItem('token');
     setToken(null);
     setUser(null);
     setIsAuthenticated(false);
-    delete axios.defaults.headers.common['Authorization'];
   };
 
   return (
