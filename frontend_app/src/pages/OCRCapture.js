@@ -121,13 +121,14 @@ const OCRCapture = () => {
       // Create form data
       const formData = new FormData();
       formData.append('invoice_image', image);
+      console.log("DEBUG OCR: FormData created");
       console.log("DEBUG OCR: Sending image to /api/ocr/upload");
       const response = await axios.post('/api/ocr/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
         }
       });
-      console.log("DEBUG OCR: Received response from /api/ocr/upload:", response.data);
+      console.log("DEBUG OCR: axios.post successful, response received.");
       
       // Handle response
       if (response.data.warning) {
@@ -139,30 +140,10 @@ const OCRCapture = () => {
         });
       }
       
-      console.log("DEBUG OCR: Setting state with extractedText, potentialItems, matches");
-      setExtractedText(response.data.extracted_text || '');
-      setPotentialItems(response.data.potential_items || []);
-      setMatches(response.data.matches || []);
-      
-      console.log("DEBUG OCR: Initializing selected items based on matches");
-      const initialSelectedItems = (response.data.matches || []).map(match => {
-        const action = match.suggested_action === 'add_new' ? 'add' : 
-                      match.suggested_action === 'update' ? 'update' : 'ignore';
-        
-        return {
-          id: match.inventory_item?.id,
-          name: action === 'add' ? match.potential_item.name : match.inventory_item.name,
-          quantity: match.potential_item.quantity,
-          unit: action === 'add' ? match.potential_item.unit : match.inventory_item.unit,
-          action,
-          matchScore: match.match_score
-        };
-      });
-      setSelectedItems(initialSelectedItems);
-      console.log("DEBUG OCR: State update complete after API call");
+      console.log("DEBUG OCR: API call successful, but skipping post-processing for now.");
       
     } catch (err) {
-      console.error("DEBUG OCR: Error in processImage API call:", err);
+      console.error("DEBUG OCR: axios.post to /api/ocr/upload FAILED:", err);
       let message = 'Failed to process image.';
       if (err.response) {
         console.error("DEBUG OCR: Error response data:", err.response.data);
@@ -182,7 +163,7 @@ const OCRCapture = () => {
         severity: 'error'
       });
     } finally {
-      console.log("DEBUG OCR: processImage finally block, setLoading(false)");
+      console.log("DEBUG OCR: processImage finished (finally block)");
       setLoading(false);
     }
   };
