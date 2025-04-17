@@ -104,6 +104,7 @@ const OCRCapture = () => {
   
   // Process image with OCR
   const processImage = async () => {
+    console.log("DEBUG OCR: processImage started");
     if (!image) {
       setSnackbar({
         open: true,
@@ -120,16 +121,17 @@ const OCRCapture = () => {
       // Create form data
       const formData = new FormData();
       formData.append('invoice_image', image);
-      
-      // Send to OCR API
+      console.log("DEBUG OCR: Sending image to /api/ocr/upload");
       const response = await axios.post('/api/ocr/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
         }
       });
+      console.log("DEBUG OCR: Received response from /api/ocr/upload:", response.data);
       
       // Handle response
       if (response.data.warning) {
+        console.log("DEBUG OCR: Backend warning:", response.data.warning);
         setSnackbar({
           open: true,
           message: response.data.warning,
@@ -137,11 +139,12 @@ const OCRCapture = () => {
         });
       }
       
+      console.log("DEBUG OCR: Setting state with extractedText, potentialItems, matches");
       setExtractedText(response.data.extracted_text || '');
       setPotentialItems(response.data.potential_items || []);
       setMatches(response.data.matches || []);
       
-      // Initialize selected items based on matches
+      console.log("DEBUG OCR: Initializing selected items based on matches");
       const initialSelectedItems = (response.data.matches || []).map(match => {
         const action = match.suggested_action === 'add_new' ? 'add' : 
                       match.suggested_action === 'update' ? 'update' : 'ignore';
@@ -155,15 +158,31 @@ const OCRCapture = () => {
           matchScore: match.match_score
         };
       });
-      
       setSelectedItems(initialSelectedItems);
+      console.log("DEBUG OCR: State update complete after API call");
       
-      // Move to next step
-      setActiveStep(1);
     } catch (err) {
-      console.error('Error processing image:', err);
-      setError(err.response?.data?.error || 'Failed to process image');
+      console.error("DEBUG OCR: Error in processImage API call:", err);
+      let message = 'Failed to process image.';
+      if (err.response) {
+        console.error("DEBUG OCR: Error response data:", err.response.data);
+        console.error("DEBUG OCR: Error response status:", err.response.status);
+        message = err.response.data?.error || err.response.data?.message || `Server error: ${err.response.status}`;
+      } else if (err.request) {
+        console.error("DEBUG OCR: Error request:", err.request);
+        message = 'No response from server. Check connection or backend status.';
+      } else {
+        console.error("DEBUG OCR: Error message:", err.message);
+        message = err.message;
+      }
+      setError(message);
+      setSnackbar({
+        open: true,
+        message: message,
+        severity: 'error'
+      });
     } finally {
+      console.log("DEBUG OCR: processImage finally block, setLoading(false)");
       setLoading(false);
     }
   };
@@ -184,51 +203,68 @@ const OCRCapture = () => {
   
   // Process selected items
   const processItems = async () => {
+    console.log("DEBUG OCR: processItems started");
     setLoading(true);
+    setError(null);
+    let successCount = 0;
+    let errorCount = 0;
+    const itemsToProcess = selectedItems.filter(item => item.action === 'add' || item.action === 'update');
+    console.log(`DEBUG OCR: Processing ${itemsToProcess.length} items.`);
     
-    try {
-      // Filter out ignored items
-      const itemsToProcess = selectedItems.filter(item => item.action !== 'ignore');
-      
-      // Send to API
-      const response = await axios.post('/api/ocr/process', {
-        items: itemsToProcess
-      });
-      
-      setSnackbar({
-        open: true,
-        message: `Processing complete: ${response.data.items_added} added, ${response.data.items_updated} updated`,
-        severity: 'success'
-      });
-      
-      // Reset and go back to first step
-      setActiveStep(0);
-      setImage(null);
-      setImagePreview(null);
-      setExtractedText('');
-      setPotentialItems([]);
-      setMatches([]);
-      setSelectedItems([]);
-    } catch (err) {
-      console.error('Error processing items:', err);
-      setSnackbar({
-        open: true,
-        message: err.response?.data?.error || 'Failed to process items',
-        severity: 'error'
-      });
-    } finally {
-      setLoading(false);
+    for (const item of itemsToProcess) {
+      try {
+        if (item.action === 'add') {
+          console.log("DEBUG OCR: processItems - Adding item:", item.name, item.quantity, item.unit);
+          await addItem({ name: item.name, quantity: item.quantity, unit: item.unit || 'pcs' });
+          successCount++;
+        } else if (item.action === 'update') {
+          console.log("DEBUG OCR: processItems - Updating item ID:", item.id, "with quantity/unit:", item.quantity, item.unit);
+          await updateItem(item.id, { quantity: item.quantity, unit: item.unit || 'pcs' });
+          successCount++;
+        }
+        console.log("DEBUG OCR: processItems - Successfully processed item:", item.name || item.id);
+      } catch (err) {
+        console.error("DEBUG OCR: Error processing item:", item, err);
+        errorCount++;
+        // Update error state, maybe collect errors instead of overwriting
+        setError(`Failed to process item: ${item.name || `ID ${item.id}`}. ${err.response?.data?.error || err.message}`);
+        // Stop processing further items on error? Or show summary? Currently continues.
+      }
     }
+    
+    console.log("DEBUG OCR: processItems finished. Success:", successCount, "Errors:", errorCount);
+    setLoading(false);
+    
+    if (errorCount === 0 && successCount > 0) {
+      setSnackbar({ open: true, message: `Successfully processed ${successCount} items.`, severity: 'success' });
+    } else if (errorCount > 0) {
+      setSnackbar({ open: true, message: `Processed ${successCount} items with ${errorCount} errors. Check console/error message.`, severity: 'warning' });
+    } else {
+      setSnackbar({ open: true, message: 'No items were processed.', severity: 'info' });
+    }
+    
+    // Optionally navigate away or reset state after processing
+    // navigate('/inventory'); // Example navigation
+    // setActiveStep(0); setImage(null); ... // Example reset
   };
   
   // Handle step navigation
   const handleNext = () => {
-    if (activeStep === 0) {
-      processImage();
-    } else if (activeStep === 1) {
-      setActiveStep(2);
-    } else if (activeStep === 2) {
+    console.log("DEBUG OCR: handleNext called. Current step:", activeStep);
+    if (activeStep === steps.length - 1) {
+      console.log("DEBUG OCR: Calling processItems from handleNext (final step)");
       processItems();
+    } else {
+      // Logic for moving between steps
+      if (activeStep === 0) {
+        console.log("DEBUG OCR: Calling processImage from handleNext (step 0 -> 1)");
+        // processImage should ideally be called *before* showing step 1, 
+        // maybe triggered by clicking 'Next' on step 0 itself, not here.
+        // Let's assume processImage was already called when image was ready
+        // and we are just moving to display the results.
+      }
+      setActiveStep((prevActiveStep) => prevActiveStep + 1);
+      console.log("DEBUG OCR: Incremented activeStep to (target):", activeStep + 1);
     }
   };
   
