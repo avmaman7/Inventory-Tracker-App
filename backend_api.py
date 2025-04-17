@@ -43,10 +43,6 @@ jwt = JWTManager(app)
 socketio = SocketIO(app, cors_allowed_origins="*")
 CORS(app)
 
-# Create database tables if they don't exist
-with app.app_context():
-    db.create_all()
-
 # Define database models
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -110,6 +106,19 @@ class InventoryChange(db.Model):
             'timestamp': self.timestamp.isoformat(),
             'user_id': self.user_id
         }
+
+# --- Temporary Route for Initial DB Setup ---
+# !!! Visit this route ONCE manually after deployment !!!
+# !!! Then consider removing or securing it !!!
+@app.route('/_initialize_database_once')
+def initialize_database():
+    try:
+        with app.app_context():
+            db.create_all()
+        return "Database tables created (or already existed).", 200
+    except Exception as e:
+        return f"An error occurred: {str(e)}", 500
+# --- End Temporary Route ---
 
 # Authentication routes
 @app.route('/api/auth/register', methods=['POST'])
