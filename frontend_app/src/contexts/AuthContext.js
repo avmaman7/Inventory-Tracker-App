@@ -33,37 +33,44 @@ export const AuthProvider = ({ children }) => {
   }, [axiosInterceptor]);
 
   useEffect(() => {
-    const verifyToken = async () => {
-      if (isAuthenticated) { 
-        setLoading(false);
-        return;
-      }
-      
-      const initialToken = localStorage.getItem('token'); 
+    const verifyInitialToken = async () => {
+      console.log('DEBUG AuthContext: Running verifyInitialToken');
+      const initialToken = localStorage.getItem('token');
+      console.log('DEBUG AuthContext: Found initialToken:', initialToken ? 'Yes' : 'No');
+
       if (!initialToken) {
-        setLoading(false);
-        setIsAuthenticated(false);
+        console.log('DEBUG AuthContext: No initial token found. Setting loading=false, isAuthenticated=false');
+        setToken(null); // Ensure token state is also cleared
         setUser(null);
+        setIsAuthenticated(false);
+        setLoading(false);
         return;
       }
 
+      // Always attempt to verify if a token exists, don't rely on initial isAuthenticated state
       try {
+        console.log('DEBUG AuthContext: Attempting to verify token with /api/auth/user');
+        // Axios interceptor will add the token header
         const response = await axios.get('/api/auth/user');
+        console.log('DEBUG AuthContext: Token verification successful. User:', response.data);
         setUser(response.data);
+        setToken(initialToken); // Ensure token state matches localStorage
         setIsAuthenticated(true);
       } catch (error) {
-        console.error('Authentication error during verifyToken:', error);
+        console.error('DEBUG AuthContext: Token verification failed:', error);
+        // Clear invalid token and reset auth state
+        localStorage.removeItem('token');
         setToken(null);
         setUser(null);
         setIsAuthenticated(false);
-        localStorage.removeItem('token');
       } finally {
+        console.log('DEBUG AuthContext: Setting loading=false');
         setLoading(false);
       }
     };
 
-    verifyToken();
-  }, [isAuthenticated]); 
+    verifyInitialToken();
+  }, []); // <-- Run only once on mount, remove 'isAuthenticated' dependency
 
   const login = async (username, password) => {
     try {
