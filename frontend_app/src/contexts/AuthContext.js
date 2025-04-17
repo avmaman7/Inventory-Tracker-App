@@ -32,6 +32,8 @@ export const AuthProvider = ({ children }) => {
       }
 
       try {
+        console.log('verifyToken: Checking Authorization header before request:', axios.defaults.headers.common['Authorization']);
+        
         // This GET request might be happening without the Authorization header
         const response = await axios.get('/api/auth/user');
         setUser(response.data);
