@@ -43,6 +43,10 @@ jwt = JWTManager(app)
 socketio = SocketIO(app, cors_allowed_origins="*")
 CORS(app)
 
+# Create database tables if they don't exist
+with app.app_context():
+    db.create_all()
+
 # Define database models
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -558,9 +562,5 @@ def server_error(error):
 
 # Run the application
 if __name__ == '__main__':
-    # Create database tables if they don't exist
-    with app.app_context():
-        db.create_all()
-    
     # Run the application with WebSocket support
     socketio.run(app, host='0.0.0.0', port=5000, debug=True)
