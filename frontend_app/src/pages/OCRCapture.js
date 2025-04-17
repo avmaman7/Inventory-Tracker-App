@@ -148,21 +148,25 @@ const OCRCapture = () => {
         }
       });
       console.log("DEBUG OCR: axios.post successful, response received.");
-      
-      // Handle response
-      if (response.data.warning) {
-        console.log("DEBUG OCR: Backend warning:", response.data.warning);
-        setSnackbar({
-          open: true,
-          message: response.data.warning,
-          severity: 'warning'
-        });
-      }
-      
-      console.log("DEBUG OCR: API call successful, but skipping post-processing for now.");
-      
+
+      // Interceptor should add Authorization header
+      console.log('DEBUG OCR: API Response data:', response.data); 
+      const { extracted_text, potential_items, matches } = response.data;
+      console.log('DEBUG OCR: Extracted Text:', extracted_text ? extracted_text.substring(0, 50) + '...' : 'None'); 
+      console.log('DEBUG OCR: Potential Items count:', potential_items ? potential_items.length : 0); 
+      console.log('DEBUG OCR: Matches count:', matches ? Object.keys(matches).length : 0); 
+
+      setExtractedText(extracted_text || 'No text extracted.');
+      setPotentialItems(potential_items || []);
+      setMatches(matches || {});
+
+      // Process items immediately after receiving response
+      console.log('DEBUG OCR: Calling processItems'); 
+      processItems(potential_items || [], matches || {}); 
+      console.log('DEBUG OCR: processItems call finished'); 
+
     } catch (err) {
-      console.error("DEBUG OCR: axios.post to /api/ocr/upload FAILED:", err);
+      console.error("DEBUG OCR: axios.post to /api/ocr/upload FAILED:", err); 
       let message = 'Failed to process image.';
       if (err.response) {
         console.error("DEBUG OCR: Error response data:", err.response.data);
