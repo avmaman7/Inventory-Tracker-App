@@ -23,9 +23,15 @@ export const AuthProvider = ({ children }) => {
     }
   }, [token]);
 
-  // Check if user is authenticated on initial load
+  // Check if user is authenticated on initial load or token change
   useEffect(() => {
     const verifyToken = async () => {
+      // If login() just set isAuthenticated, don't immediately try to re-verify.
+      if (isAuthenticated) {
+        setLoading(false);
+        return;
+      }
+
       if (!token) {
         setLoading(false);
         return;
@@ -56,7 +62,7 @@ export const AuthProvider = ({ children }) => {
     };
 
     verifyToken();
-  }, [token]);
+  }, [token, isAuthenticated]);
 
   // Login function
   const login = async (username, password) => {
