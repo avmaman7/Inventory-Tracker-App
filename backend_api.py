@@ -404,7 +404,8 @@ from ocr_module import extract_text_from_image, parse_invoice_items, match_items
 # OCR routes
 @app.route('/api/ocr/upload', methods=['POST'])
 @jwt_required()
-def upload_invoice():
+def upload_invoice_ocr():
+    print(f"DEBUG: OCR Upload - Received Authorization Header: {request.headers.get('Authorization')}")
     user_id = get_jwt_identity()
     
     if 'invoice_image' not in request.files:
