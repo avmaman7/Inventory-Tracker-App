@@ -97,6 +97,16 @@ const theme = createTheme({
         },
       },
     },
+    MuiCssBaseline: {
+      styleOverrides: `
+        button, 
+        a, 
+        [role="button"],
+        [role="link"] {
+          cursor: pointer;
+        }
+      `,
+    },
   },
 });
 
