@@ -43,6 +43,10 @@ jwt = JWTManager(app)
 socketio = SocketIO(app, cors_allowed_origins="*")
 CORS(app)
 
+# Create database tables if they don't exist
+with app.app_context():
+    db.create_all()
+
 # Define database models
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
