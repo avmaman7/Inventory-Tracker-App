@@ -56,6 +56,7 @@ const OCRCapture = () => {
   
   // Handle file selection
   const handleFileSelect = (e) => {
+    console.log('DEBUG OCR: handleFileSelect triggered');
     const file = e.target.files[0];
     if (!file) return;
     
@@ -117,11 +118,29 @@ const OCRCapture = () => {
     setLoading(true);
     setError(null);
     
+    let formData;
+    let token;
     try {
       // Create form data
-      const formData = new FormData();
+      console.log("DEBUG OCR: Preparing FormData and checking token");
+      formData = new FormData();
       formData.append('invoice_image', image);
-      console.log("DEBUG OCR: FormData created");
+      console.log("DEBUG OCR: FormData created successfully");
+      
+      token = localStorage.getItem('token');
+      if (!token) {
+        console.error("DEBUG OCR: No token found before API call preparation");
+        throw new Error('Authentication error. Please log in again.');
+      }
+      console.log("DEBUG OCR: Token check successful");
+    } catch (prepError) {
+      console.error("DEBUG OCR: Error during PREPARATION before API call:", prepError);
+      setError(`Error preparing image for upload: ${prepError.message}`);
+      setLoading(false);
+      return; // Stop processing if preparation fails
+    }
+    
+    try {
       console.log("DEBUG OCR: Sending image to /api/ocr/upload");
       const response = await axios.post('/api/ocr/upload', formData, {
         headers: {
