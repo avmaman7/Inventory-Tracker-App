@@ -191,8 +191,13 @@ def get_user():
 @app.route('/api/items', methods=['GET'])
 @jwt_required()
 def get_items():
-    items = Item.query.order_by(Item.name).all()
-    return jsonify([item.to_dict() for item in items]), 200
+    print(f"DEBUG: Get Items - Received Authorization Header: {request.headers.get('Authorization')}")
+    user_id = get_jwt_identity()
+    try:
+        items = Item.query.order_by(Item.name).all()
+        return jsonify([item.to_dict() for item in items]), 200
+    except Exception as e:
+        return jsonify({'error': 'Failed to retrieve items'}), 500
 
 @app.route('/api/items/<int:item_id>', methods=['GET'])
 @jwt_required()
