@@ -1,0 +1,12 @@
+.vercel
+
+# Environment variables
+.env
+
+# Python bytecode and cache
+__pycache__/
+*.pyc
+
+# Frontend dependencies and build artifacts
+frontend_app/node_modules/
+frontend_app/build/
