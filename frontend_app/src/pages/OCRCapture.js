@@ -44,7 +44,7 @@ const OCRCapture = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [potentialItems, setPotentialItems] = useState([]);
-  const [matches, setMatches] = useState([]);
+  const [matches, setMatches] = useState({});
   const [selectedItems, setSelectedItems] = useState([]);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   
@@ -162,11 +162,21 @@ const OCRCapture = () => {
       setPotentialItems(potential_items || []);
       setMatches(matches || {});
 
-      // Process items immediately after receiving response
-      console.log('DEBUG OCR: Calling processItems');
-      processItems(potential_items || [], matches || {}); // Note: We might want processItems to also return success/failure if it can fail
-      console.log('DEBUG OCR: processItems call finished');
-      // --- End restored logic ---
+      // Initialize selectedItems based on potential items and matches
+      const initialSelectedItems = (potential_items || []).map((pItem, index) => {
+        const matchInfo = matches ? matches[index] : null; // Find match for this potential item
+        return {
+          tempId: `temp-${index}-${Date.now()}`, // Unique temporary ID for UI mapping
+          name: pItem.name,
+          quantity: pItem.quantity || 1, // Default quantity if missing
+          unit: pItem.unit || 'pcs',     // Default unit if missing
+          action: matchInfo ? 'update' : 'add', // Default action based on match
+          id: matchInfo ? matchInfo.id : null,    // Existing inventory ID if matched
+        };
+      });
+      console.log('DEBUG OCR: Initializing selectedItems state:', initialSelectedItems);
+      setSelectedItems(initialSelectedItems);
+
       setLoading(false);
       return true; // Return true on success
 
@@ -194,46 +204,76 @@ const OCRCapture = () => {
   };
 
   // Handle item selection change
-  const handleItemActionChange = (index, action) => {
+  const handleItemActionChange = (tempId, action) => {
     const updatedItems = [...selectedItems];
-    updatedItems[index].action = action;
-    setSelectedItems(updatedItems);
+    const itemIndex = updatedItems.findIndex(item => item.tempId === tempId);
+    if (itemIndex !== -1) {
+      updatedItems[itemIndex].action = action;
+      setSelectedItems(updatedItems);
+    }
   };
   
   // Handle item quantity change
-  const handleItemQuantityChange = (index, quantity) => {
+  const handleItemQuantityChange = (tempId, quantity) => {
     const updatedItems = [...selectedItems];
-    updatedItems[index].quantity = quantity;
-    setSelectedItems(updatedItems);
+    const itemIndex = updatedItems.findIndex(item => item.tempId === tempId);
+    if (itemIndex !== -1) {
+      updatedItems[itemIndex].quantity = parseInt(quantity, 10) || 0; // Ensure quantity is a number
+      setSelectedItems(updatedItems);
+    }
   };
   
   // Process selected items
-  const processItems = async (itemsToProcess, currentMatches) => {
-    console.log("DEBUG OCR: processItems started with:", itemsToProcess, currentMatches);
-    try {
-      // Example: Assume processing involves API calls or complex logic that could fail
-      // For now, just log and return true. Replace with actual logic.
-      console.log("DEBUG OCR: Simulating item processing...");
-      
-      // Filter out items marked as 'ignore'
-      const itemsToAdd = selectedItems.filter(item => item.action === 'add');
-      const itemsToUpdate = selectedItems.filter(item => item.action === 'update');
-      
-      console.log(`DEBUG OCR: Items to Add (${itemsToAdd.length}):`, itemsToAdd);
-      console.log(`DEBUG OCR: Items to Update (${itemsToUpdate.length}):`, itemsToUpdate);
-
-      // Placeholder for actual API calls to add/update items
-      // Simulating success for now
-      await new Promise(resolve => setTimeout(resolve, 500)); // Simulate async work
-
-      console.log("DEBUG OCR: Item processing simulation successful.");
-      return true; // Indicate success
-    } catch (error) {
-      console.error("DEBUG OCR: Error in processItems:", error);
-      setError('Failed to process items after extraction.');
-      setSnackbar({ open: true, message: 'Error processing selected items.', severity: 'error' });
-      return false; // Indicate failure
+  const processItems = async () => {
+    console.log("DEBUG OCR: processItems started");
+    setLoading(true);
+    setError(null);
+    let successCount = 0;
+    let errorCount = 0;
+    const itemsToProcess = selectedItems.filter(item => item.action === 'add' || item.action === 'update');
+    console.log(`DEBUG OCR: Processing ${itemsToProcess.length} items based on selected actions.`);
+    
+    for (const item of itemsToProcess) {
+      try {
+        if (item.action === 'add') {
+          console.log("DEBUG OCR: processItems - Adding item:", item.name, item.quantity, item.unit);
+          await addItem({ name: item.name, quantity: item.quantity, unit: item.unit || 'pcs' });
+          successCount++;
+        } else if (item.action === 'update') {
+          // Ensure item.id is valid before attempting update
+          if (!item.id) {
+            console.warn("DEBUG OCR: Skipping update for item without ID:", item.name);
+            // Optionally treat as an error or just skip
+            continue; 
+          }
+          console.log("DEBUG OCR: processItems - Updating item ID:", item.id, "with quantity/unit:", item.quantity, item.unit);
+          await updateItem(item.id, { quantity: item.quantity, unit: item.unit || 'pcs' });
+          successCount++;
+        }
+        console.log("DEBUG OCR: processItems - Successfully processed item:", item.name || item.id);
+      } catch (err) {
+        console.error("DEBUG OCR: Error processing item:", item, err);
+        errorCount++;
+        // Update error state, maybe collect errors instead of overwriting
+        setError(`Failed to process item: ${item.name || `ID ${item.id}`}. ${err.response?.data?.error || err.message}`);
+        // Stop processing further items on error? Or show summary? Currently continues.
+      }
     }
+    
+    console.log("DEBUG OCR: processItems finished. Success:", successCount, "Errors:", errorCount);
+    setLoading(false);
+    
+    if (errorCount === 0 && successCount > 0) {
+      setSnackbar({ open: true, message: `Successfully processed ${successCount} items.`, severity: 'success' });
+    } else if (errorCount > 0) {
+      setSnackbar({ open: true, message: `Processed ${successCount} items with ${errorCount} errors. Check console/error message.`, severity: 'warning' });
+    } else if (successCount === 0 && errorCount === 0) {
+       setSnackbar({ open: true, message: 'No items were selected for processing.', severity: 'info' });
+    }
+    
+    // Return true if at least some items were processed, false if major failure occurred
+    // For now, returning true unless the loop itself crashes (which shouldn't happen with try/catch)
+    return errorCount === 0; // Return true only if NO errors occurred
   };
 
   // Handle step navigation
@@ -357,21 +397,22 @@ const OCRCapture = () => {
         );
       
       case 1:
+        console.log(`DEBUG OCR: Rendering Step 1. selectedItems length: ${selectedItems.length}`); // Add log here
         return (
           <Box sx={{ py: 2 }}>
             <Typography variant="h6" gutterBottom>
               Detected Items
             </Typography>
             
-            {potentialItems.length === 0 ? (
+            {/* Check selectedItems length instead of potentialItems */}
+            {selectedItems.length === 0 ? (
               <Alert severity="info" sx={{ mb: 2 }}>
-                No items detected in the image. Try again with a clearer image.
+                No reviewable items found or processing failed. Check console/try again.
               </Alert>
             ) : (
               <List>
-                {selectedItems.map((item, index) => (
-                  <React.Fragment key={index}>
-                    {index > 0 && <Divider component="li" />}
+                {selectedItems.map((item) => (
+                  <React.Fragment key={item.tempId}>
                     <ListItem>
                       <ListItemText
                         primary={
@@ -402,7 +443,10 @@ const OCRCapture = () => {
                               type="number"
                               size="small"
                               value={item.quantity}
-                              onChange={(e) => handleItemQuantityChange(index, parseFloat(e.target.value) || 0)}
+                              onChange={(e) => { 
+                                console.log(`DEBUG OCR: Quantity changed for ${item.tempId} to ${e.target.value}`);
+                                handleItemQuantityChange(item.tempId, parseFloat(e.target.value) || 0)
+                              }}
                               InputProps={{ inputProps: { min: 0, step: 0.1 } }}
                               sx={{ width: '100px', mr: 2 }}
                             />
@@ -421,7 +465,10 @@ const OCRCapture = () => {
                         <Box sx={{ display: 'flex', alignItems: 'center' }}>
                           <IconButton 
                             color={item.action === 'update' ? 'primary' : 'default'}
-                            onClick={() => handleItemActionChange(index, 'update')}
+                            onClick={() => { 
+                              console.log(`DEBUG OCR: Update clicked for ${item.tempId}`);
+                              handleItemActionChange(item.tempId, 'update')
+                            }}
                             disabled={!item.id}
                             title="Update existing item"
                           >
@@ -430,7 +477,10 @@ const OCRCapture = () => {
                           
                           <IconButton 
                             color={item.action === 'add' ? 'success' : 'default'}
-                            onClick={() => handleItemActionChange(index, 'add')}
+                            onClick={() => { 
+                              console.log(`DEBUG OCR: Add clicked for ${item.tempId}`);
+                              handleItemActionChange(item.tempId, 'add')
+                            }}
                             title="Add as new item"
                           >
                             <AddIcon />
@@ -438,7 +488,10 @@ const OCRCapture = () => {
                           
                           <IconButton 
                             color={item.action === 'ignore' ? 'error' : 'default'}
-                            onClick={() => handleItemActionChange(index, 'ignore')}
+                            onClick={() => { 
+                              console.log(`DEBUG OCR: Ignore clicked for ${item.tempId}`);
+                              handleItemActionChange(item.tempId, 'ignore')
+                            }}
                             title="Ignore this item"
                           >
                             <CloseIcon />
@@ -485,8 +538,8 @@ const OCRCapture = () => {
               <List>
                 {selectedItems
                   .filter(item => item.action === 'add')
-                  .map((item, index) => (
-                    <ListItem key={index}>
+                  .map((item) => (
+                    <ListItem key={item.tempId}>
                       <ListItemText
                         primary={item.name}
                         secondary={`${item.quantity} ${item.unit}`}
@@ -508,10 +561,10 @@ const OCRCapture = () => {
               <List>
                 {selectedItems
                   .filter(item => item.action === 'update')
-                  .map((item, index) => {
+                  .map((item) => {
                     const existingItem = items.find(i => i.id === item.id);
                     return (
-                      <ListItem key={index}>
+                      <ListItem key={item.tempId}>
                         <ListItemText
                           primary={item.name}
                           secondary={
