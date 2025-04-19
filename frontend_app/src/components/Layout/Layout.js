@@ -20,7 +20,9 @@ import {
   useTheme,
   BottomNavigation,
   BottomNavigationAction,
-  Badge
+  Badge,
+  Snackbar,
+  Alert
 } from '@mui/material';
 import { 
   Menu as MenuIcon, 
@@ -40,6 +42,8 @@ const Layout = ({ children }) => {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState(null);
   const [mobileNavValue, setMobileNavValue] = useState(0);
+  // Snackbar state for notifications
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
   
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -47,6 +51,11 @@ const Layout = ({ children }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   
+  // Handler for alert/notification icon: dismiss notifications
+  const handleAlertClick = () => {
+    setSnackbar({ ...snackbar, open: false });
+  };
+
   // Set mobile navigation value based on current path
   useEffect(() => {
     const path = location.pathname;
@@ -181,7 +190,7 @@ const Layout = ({ children }) => {
             {isMobile ? 'Inventory' : 'Inventory Tracker'}
           </Typography>
           
-          <IconButton color="inherit">
+          <IconButton color="inherit" onClick={handleAlertClick} sx={{ ml: 1 }}>
             <Badge badgeContent={3} color="error">
               <NotificationsIcon />
             </Badge>
@@ -313,6 +322,22 @@ const Layout = ({ children }) => {
           </BottomNavigation>
         </Paper>
       )}
+      
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
+          severity={snackbar.severity || 'info'}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

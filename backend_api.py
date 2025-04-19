@@ -299,31 +299,29 @@ def update_item(item_id):
 @jwt_required()
 def delete_item(item_id):
     user_id = get_jwt_identity()
-    
-    item = Item.query.get(item_id)
-    
-    if not item:
-        return jsonify({'error': 'Item not found'}), 404
-    
-    # Record inventory change before deletion
-    change = InventoryChange(
-        item_id=item.id,
-        previous_quantity=item.quantity,
-        new_quantity=0,
-        change_type='delete',
-        user_id=user_id
-    )
-    
-    db.session.add(change)
-    
-    # Delete item
-    db.session.delete(item)
-    db.session.commit()
-    
-    # Emit real-time update
-    socketio.emit('item_deleted', {'id': item_id})
-    
-    return jsonify({'message': 'Item deleted successfully'}), 200
+    try:
+        item = Item.query.get(item_id)
+        if not item:
+            return jsonify({'error': 'Item not found'}), 404
+        # Record inventory change before deletion
+        change = InventoryChange(
+            item_id=item.id,
+            previous_quantity=item.quantity,
+            new_quantity=0,
+            change_type='delete',
+            user_id=user_id
+        )
+        db.session.add(change)
+        # Delete item
+        db.session.delete(item)
+        db.session.commit()
+        # Emit real-time update
+        socketio.emit('item_deleted', {'id': item_id})
+        return jsonify({'message': 'Item deleted successfully'}), 200
+    except Exception as e:
+        import traceback
+        print('ERROR during delete_item:', traceback.format_exc())
+        return jsonify({'error': f'Failed to delete item: {str(e)}'}), 500
 
 @app.route('/api/items/<int:item_id>/history', methods=['GET'])
 @jwt_required()

@@ -81,9 +81,7 @@ def extract_text_from_image(image_path):
 def parse_invoice_items(text):
     """
     Parse the extracted text to identify potential items and quantities.
-    This is a basic implementation that looks for patterns like:
-    - Item name followed by quantity and possibly unit
-    - Item name followed by price
+    Improved: Now ignores lines with header/address/business keywords and only treats lines as items if they contain both a probable name and numeric quantity.
     """
     if not text:
         return []
@@ -97,75 +95,51 @@ def parse_invoice_items(text):
     # Keywords indicating a line is likely NOT an inventory item
     NON_ITEM_KEYWORDS = [
         'total', 'subtotal', 'tax', 'vat', 'gst', 'hst', 'amount', 'due',
-        'invoice', 'date', 'page', 'po number', 'order #', 'customer id',
-        'phone', 'fax', 'email', 'website', 'address', 'street', 'city', 'state', 'zip', 'country',
-        'payment', 'terms', 'ship to', 'bill to', 'notes', 'thank you', 'quantity', 'price', 'description', 
-        'item #', 'sku', 'unit' # Also filter out header rows
+        'thank', 'visit', 'address', 'phone', 'tel', 'fax', 'invoice', 'date', 'order',
+        'cashier', 'register', 'payment', 'change', 'balance', 'time', 'served', 'table',
+        'pizza', 'shop', 'ave', 'street', 'blvd', 'road', 'suite', 'location', 'city', 'zip', 'state', 'country'
     ]
     
-    # Regular expressions for matching patterns
-    # Pattern 1: Item name followed by quantity (e.g., "Apples 5 kg" or "Apples 5kg")
-    quantity_pattern = re.compile(r'(.+?)\s+(\d+\.?\d*)\s*([a-zA-Z]+)?')
-    
-    # Pattern 2: Item name followed by price (e.g., "Apples $5.99")
-    price_pattern = re.compile(r'(.+?)\s+\$?(\d+\.?\d*)')
-    
     for line in lines:
-        line = line.strip()
-        if not line:
-            continue
+        line_lower = line.lower().strip()
+        if not line_lower or any(keyword in line_lower for keyword in NON_ITEM_KEYWORDS):
+            continue  # Skip lines that are empty or contain non-item keywords
         
-        # --- Start: Add keyword filter ---    
-        line_lower = line.lower()
-        skip_line = False
-        for keyword in NON_ITEM_KEYWORDS:
-            if keyword in line_lower:
-                skip_line = True
-                break # No need to check other keywords for this line
-        if skip_line:
-            continue # Skip this line if it contains a non-item keyword
-        # --- End: Add keyword filter ---    
-            
-        # Try to match quantity pattern
-        quantity_match = quantity_pattern.match(line)
-        if quantity_match:
-            item_name = quantity_match.group(1).strip()
-            quantity = float(quantity_match.group(2))
-            unit = quantity_match.group(3) if quantity_match.group(3) else "pcs"
-            
+        # Look for a pattern: [item name] [quantity] [unit] (e.g., "Cheese 5 CS")
+        import re
+        match = re.match(r"([A-Za-z\s\-]+)\s+(\d+(?:\.\d+)?)\s*([A-Za-z]*)", line)
+        if match:
+            item_name, quantity, unit = match.group(1).strip(), float(match.group(2)), match.group(3) or "pcs"
             potential_items.append({
                 'name': item_name,
                 'quantity': quantity,
                 'unit': unit,
-                'confidence': 'high' if unit else 'medium',
+                'confidence': 'high',
                 'line': line
             })
             continue
         
-        # Try to match price pattern
-        price_match = price_pattern.match(line)
-        if price_match:
-            item_name = price_match.group(1).strip()
-            # For price pattern, we assume quantity of 1
-            potential_items.append({
-                'name': item_name,
-                'quantity': 1,
-                'unit': "pcs",
-                'confidence': 'low',
-                'line': line
-            })
-            continue
-        
-        # If no pattern matches but line has more than 3 words, consider it a potential item
+        # If no pattern matches but line has at least 2 words and a number, consider it a potential item
         words = line.split()
-        if len(words) >= 3:
-            potential_items.append({
-                'name': ' '.join(words[:-1]),
-                'quantity': 1,
-                'unit': "pcs",
-                'confidence': 'very low',
-                'line': line
-            })
+        numbers = [w for w in words if any(c.isdigit() for c in w)]
+        if len(words) >= 2 and numbers:
+            # Use the first number as quantity, rest as name
+            for i, w in enumerate(words):
+                if any(c.isdigit() for c in w):
+                    try:
+                        quantity = float(w)
+                        item_name = ' '.join(words[:i])
+                        unit = 'pcs'
+                        potential_items.append({
+                            'name': item_name,
+                            'quantity': quantity,
+                            'unit': unit,
+                            'confidence': 'medium',
+                            'line': line
+                        })
+                    except Exception:
+                        pass
+                    break
     
     return potential_items
 
