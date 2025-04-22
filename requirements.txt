@@ -9,3 +9,7 @@ python-dotenv
 gunicorn
 google-cloud-vision
 eventlet
+opencv-python-headless
+numpy
+Pillow
+pytesseract

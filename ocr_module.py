@@ -5,13 +5,40 @@ This module handles image upload and OCR processing for invoice reading.
 
 import os
 import re
-import cv2
-import numpy as np
-import tempfile
-from google.cloud import vision
 import json
-from werkzeug.utils import secure_filename
+import tempfile
 from datetime import datetime
+import base64
+
+# Try to import OpenCV, but provide a fallback if it's not available
+try:
+    import cv2
+    import numpy as np
+    CV2_AVAILABLE = True
+except ImportError:
+    print("WARNING: OpenCV (cv2) is not available. Using fallback image processing.")
+    CV2_AVAILABLE = False
+
+try:
+    from PIL import Image
+    PIL_AVAILABLE = True
+except ImportError:
+    print("WARNING: PIL is not available. Some image processing features may be limited.")
+    PIL_AVAILABLE = False
+
+try:
+    from google.cloud import vision
+    GOOGLE_VISION_AVAILABLE = True
+except ImportError:
+    print("WARNING: Google Cloud Vision API is not available. OCR functionality will be limited.")
+    GOOGLE_VISION_AVAILABLE = False
+
+try:
+    import pytesseract
+    TESSERACT_AVAILABLE = True
+except ImportError:
+    print("WARNING: pytesseract is not available. Fallback OCR will be limited.")
+    TESSERACT_AVAILABLE = False
 
 # Define allowed file extensions
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
@@ -72,34 +99,55 @@ def preprocess_image(image_path):
     """
     try:
         # Read the image
-        image = cv2.imread(image_path)
+        if CV2_AVAILABLE:
+            image = cv2.imread(image_path)
+        elif PIL_AVAILABLE:
+            image = Image.open(image_path)
+        else:
+            print("WARNING: No image processing library available. Skipping preprocessing.")
+            return image_path
         
         if image is None:
             print(f"Could not read image at {image_path}")
             return image_path
         
         # Convert to grayscale
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        if CV2_AVAILABLE:
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        elif PIL_AVAILABLE:
+            gray = image.convert('L')
         
         # Apply Gaussian blur to reduce noise
-        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        if CV2_AVAILABLE:
+            blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        elif PIL_AVAILABLE:
+            blurred = gray.filter(ImageFilter.GaussianBlur(radius=5))
         
         # Apply adaptive thresholding to enhance text
-        thresh = cv2.adaptiveThreshold(
-            blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-            cv2.THRESH_BINARY, 11, 2
-        )
+        if CV2_AVAILABLE:
+            thresh = cv2.adaptiveThreshold(
+                blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+                cv2.THRESH_BINARY, 11, 2
+            )
+        elif PIL_AVAILABLE:
+            thresh = blurred.point(lambda x: 0 if x < 128 else 255)
         
         # Enhance contrast using CLAHE (Contrast Limited Adaptive Histogram Equalization)
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        enhanced = clahe.apply(gray)
+        if CV2_AVAILABLE:
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            enhanced = clahe.apply(gray)
+        elif PIL_AVAILABLE:
+            enhanced = gray.point(lambda x: 255 if x > 128 else 0)
         
         # Create a temporary file for the processed image
         with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp:
             temp_path = temp.name
         
         # Save the processed image (try both enhanced versions and use the best one for OCR)
-        cv2.imwrite(temp_path, enhanced)
+        if CV2_AVAILABLE:
+            cv2.imwrite(temp_path, enhanced)
+        elif PIL_AVAILABLE:
+            enhanced.save(temp_path)
         
         print(f"Image preprocessed and saved to {temp_path}")
         return temp_path
@@ -159,15 +207,57 @@ def extract_text_from_image(image_path):
     """Extract text from an image using Google Cloud Vision API with confidence scores."""
     try:
         # Preprocess the image to improve OCR quality
-        processed_image_path = preprocess_image(image_path)
+        if CV2_AVAILABLE:
+            processed_image_path = preprocess_image(image_path)
+        else:
+            # Skip preprocessing if OpenCV is not available
+            processed_image_path = image_path
+            print(f"DEBUG: Skipping preprocessing, using original image: {image_path}")
         
         print(f"DEBUG: Starting OCR processing on {processed_image_path}")
         
         # Check if Google Cloud credentials are properly set
-        google_creds = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
-        if not google_creds or not os.path.exists(google_creds):
-            print("WARNING: GOOGLE_APPLICATION_CREDENTIALS environment variable not set or file doesn't exist")
-            # Use fallback text for testing
+        google_creds_path = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
+        google_creds_json = os.environ.get('GOOGLE_CREDENTIALS_JSON')
+        
+        # For Render deployment, we might have the credentials as a JSON string
+        if not google_creds_path and google_creds_json:
+            try:
+                # Create a temporary credentials file
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.json') as temp:
+                    temp_creds_path = temp.name
+                    temp.write(google_creds_json.encode('utf-8'))
+                
+                # Set the environment variable to the temporary file
+                os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = temp_creds_path
+                google_creds_path = temp_creds_path
+                print(f"DEBUG: Created temporary credentials file at {temp_creds_path}")
+            except Exception as cred_error:
+                print(f"ERROR: Failed to create temporary credentials file: {cred_error}")
+        
+        if (not google_creds_path or not os.path.exists(google_creds_path)) or not GOOGLE_VISION_AVAILABLE:
+            print("WARNING: Google Cloud Vision API not available. Using fallback OCR.")
+            # Try to use pytesseract as fallback
+            if TESSERACT_AVAILABLE:
+                try:
+                    if PIL_AVAILABLE:
+                        img = Image.open(processed_image_path)
+                        text = pytesseract.image_to_string(img)
+                        fallback_result = {
+                            'text': text,
+                            'source': 'pytesseract',
+                            'timestamp': datetime.now().isoformat()
+                        }
+                        # Save fallback result to JSON if in debug mode
+                        if DEBUG_MODE:
+                            save_ocr_response_to_json(fallback_result, image_path)
+                        return fallback_result
+                    else:
+                        print("WARNING: PIL not available, cannot use pytesseract")
+                except Exception as e:
+                    print(f"ERROR: Pytesseract OCR failed: {e}")
+            
+            # Use fallback text for testing if all else fails
             fallback_result = fallback_ocr_text()
             
             # Save fallback result to JSON if in debug mode
@@ -175,103 +265,94 @@ def extract_text_from_image(image_path):
                 save_ocr_response_to_json(fallback_result, image_path)
                 
             return fallback_result
-        
-        try:
+        else:
+            print(f"DEBUG: Using Google Cloud credentials from: {google_creds_path}")
+            
             # Instantiate the client
             client = vision.ImageAnnotatorClient()
             print("DEBUG: Successfully created Vision API client")
-        except Exception as client_error:
-            print(f"ERROR: Failed to create Vision API client: {client_error}")
-            # Use fallback text for testing
-            fallback_result = fallback_ocr_text()
             
-            # Save fallback result to JSON if in debug mode
-            if DEBUG_MODE:
-                save_ocr_response_to_json(fallback_result, image_path)
-                
-            return fallback_result
+            # Read the image file into memory
+            with open(processed_image_path, 'rb') as image_file:
+                content = image_file.read()
 
-        # Read the image file into memory
-        with open(processed_image_path, 'rb') as image_file:
-            content = image_file.read()
+            image = vision.Image(content=content)
 
-        image = vision.Image(content=content)
-
-        # Perform document text detection
-        try:
-            response = client.document_text_detection(image=image)
-        except Exception as api_error:
-            print(f"ERROR: Vision API request failed: {api_error}")
-            # Use fallback text for testing
-            fallback_result = fallback_ocr_text()
-            
-            # Save fallback result to JSON if in debug mode
-            if DEBUG_MODE:
-                save_ocr_response_to_json(fallback_result, image_path)
-                
-            return fallback_result
-
-        if response.error.message:
-            print(f"ERROR: Vision API returned error: {response.error.message}")
-            # Use fallback text for testing
-            fallback_result = fallback_ocr_text()
-            
-            # Save fallback result to JSON if in debug mode
-            if DEBUG_MODE:
-                save_ocr_response_to_json(fallback_result, image_path)
-                
-            return fallback_result
-
-        # Convert the response to a dictionary for JSON serialization
-        response_dict = {
-            'full_text': response.full_text_annotation.text,
-            'annotations': []
-        }
-        
-        # Extract the full text annotation
-        full_text = response.full_text_annotation.text
-        
-        # Also extract detailed text annotations with confidence scores
-        text_annotations = []
-        for page in response.full_text_annotation.pages:
-            for block in page.blocks:
-                block_confidence = block.confidence
-                
-                for paragraph in block.paragraphs:
-                    paragraph_confidence = paragraph.confidence
-                    paragraph_text = ""
-                    
-                    for word in paragraph.words:
-                        word_text = ''.join([symbol.text for symbol in word.symbols])
-                        word_confidence = word.confidence
-                        
-                        paragraph_text += word_text + " "
-                    
-                    annotation = {
-                        'text': paragraph_text.strip(),
-                        'confidence': float(paragraph_confidence),
-                        'block_confidence': float(block_confidence)
-                    }
-                    
-                    text_annotations.append(annotation)
-                    response_dict['annotations'].append(annotation)
-        
-        # Clean up temporary file if it was created
-        if processed_image_path != image_path and os.path.exists(processed_image_path):
+            # Perform document text detection
             try:
-                os.remove(processed_image_path)
-            except Exception as e:
-                print(f"Warning: Could not remove temporary file {processed_image_path}: {e}")
-        
-        # Save the raw OCR response to a JSON file if in debug mode
-        if DEBUG_MODE:
-            save_ocr_response_to_json(response_dict, image_path)
-        
-        return {
-            'full_text': full_text,
-            'annotations': text_annotations,
-            'raw_response': response_dict  # Include the raw response for debugging
-        }
+                response = client.document_text_detection(image=image)
+            except Exception as api_error:
+                print(f"ERROR: Vision API request failed: {api_error}")
+                # Use fallback text for testing
+                fallback_result = fallback_ocr_text()
+                
+                # Save fallback result to JSON if in debug mode
+                if DEBUG_MODE:
+                    save_ocr_response_to_json(fallback_result, image_path)
+                    
+                return fallback_result
+
+            if response.error.message:
+                print(f"ERROR: Vision API returned error: {response.error.message}")
+                # Use fallback text for testing
+                fallback_result = fallback_ocr_text()
+                
+                # Save fallback result to JSON if in debug mode
+                if DEBUG_MODE:
+                    save_ocr_response_to_json(fallback_result, image_path)
+                    
+                return fallback_result
+
+            # Convert the response to a dictionary for JSON serialization
+            response_dict = {
+                'full_text': response.full_text_annotation.text,
+                'annotations': []
+            }
+            
+            # Extract the full text annotation
+            full_text = response.full_text_annotation.text
+            
+            # Also extract detailed text annotations with confidence scores
+            text_annotations = []
+            for page in response.full_text_annotation.pages:
+                for block in page.blocks:
+                    block_confidence = block.confidence
+                    
+                    for paragraph in block.paragraphs:
+                        paragraph_confidence = paragraph.confidence
+                        paragraph_text = ""
+                        
+                        for word in paragraph.words:
+                            word_text = ''.join([symbol.text for symbol in word.symbols])
+                            word_confidence = word.confidence
+                            
+                            paragraph_text += word_text + " "
+                        
+                        annotation = {
+                            'text': paragraph_text.strip(),
+                            'confidence': float(paragraph_confidence),
+                            'block_confidence': float(block_confidence)
+                        }
+                        
+                        text_annotations.append(annotation)
+                        response_dict['annotations'].append(annotation)
+            
+            # Clean up temporary file if it was created
+            if processed_image_path != image_path and os.path.exists(processed_image_path):
+                try:
+                    os.remove(processed_image_path)
+                except Exception as e:
+                    print(f"Warning: Could not remove temporary file {processed_image_path}: {e}")
+            
+            # Save the raw OCR response to a JSON file if in debug mode
+            if DEBUG_MODE:
+                save_ocr_response_to_json(response_dict, image_path)
+            
+            return {
+                'full_text': full_text,
+                'annotations': text_annotations,
+                'raw_response': response_dict  # Include the raw response for debugging
+            }
 
     except Exception as e:
         print(f"Error extracting text from image using Google Vision: {e}")

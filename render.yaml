@@ -14,10 +14,18 @@ services:
         value: 10000
       - key: RENDER
         value: true
+      # For Google Cloud Vision API credentials
       - key: GOOGLE_CREDENTIALS_JSON
         sync: false
+      # For debug mode control
       - key: OCR_DEBUG_MODE
         value: false
+      # For Tesseract OCR (fallback)
+      - key: PATH
+        value: /usr/local/bin:/usr/bin:/bin:/app/.apt/usr/bin
+    packages:
+      - tesseract-ocr
+      - libtesseract-dev
     disk:
       name: uploads
       mountPath: /opt/render/project/src/static/uploads
