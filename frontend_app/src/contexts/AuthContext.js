@@ -75,8 +75,9 @@ export const AuthProvider = ({ children }) => {
   const login = async (username, password) => {
     try {
       console.log('Login function: Sending request...'); 
-      // Use absolute URL to bypass any interceptors or base URL settings
-      const response = await axios.post('http://localhost:5002/api/auth/login', { username, password });
+      // Use the API URL from environment variables or fall back to localhost
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5002';
+      const response = await axios.post(`${apiUrl}/api/auth/login`, { username, password });
       console.log('Login function: Received response data:', response.data); 
       
       const { access_token, user } = response.data;
@@ -113,8 +114,9 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (username, email, password) => {
     try {
-      // Use absolute URL to bypass any interceptors or base URL settings
-      await axios.post('http://localhost:5002/api/auth/register', { username, email, password });
+      // Use the API URL from environment variables or fall back to localhost
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5002';
+      await axios.post(`${apiUrl}/api/auth/register`, { username, email, password });
       return { success: true };
     } catch (error) {
       console.error('Registration error:', error);
