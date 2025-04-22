@@ -5,8 +5,6 @@ import {
   Paper, 
   Button, 
   CircularProgress,
-  Snackbar,
-  Alert,
   Card,
   CardContent,
   Grid,
@@ -21,7 +19,8 @@ import {
   Stepper,
   Step,
   StepLabel,
-  Fab
+  Fab,
+  Chip
 } from '@mui/material';
 import { 
   CameraAlt as CameraIcon,
@@ -35,6 +34,7 @@ import {
 import Layout from '../components/Layout/Layout';
 import { useInventoryUpdates } from '../hooks/useInventoryUpdates';
 import axios from 'axios';
+import { useNotification } from '../contexts/NotificationContext';
 
 const OCRCapture = () => {
   const [activeStep, setActiveStep] = useState(0);
@@ -46,10 +46,24 @@ const OCRCapture = () => {
   const [potentialItems, setPotentialItems] = useState([]);
   const [matches, setMatches] = useState({});
   const [selectedItems, setSelectedItems] = useState([]);
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const { notify } = useNotification();
   
   const fileInputRef = useRef(null);
   const { items, addItem, updateItem } = useInventoryUpdates();
+  
+  // Function to manually refresh inventory data
+  const fetchInventory = async () => {
+    try {
+      console.log("DEBUG OCR: Manually refreshing inventory data");
+      const response = await axios.get('/api/items');
+      console.log("DEBUG OCR: Refreshed inventory data:", response.data);
+      return response.data;
+    } catch (err) {
+      console.error("DEBUG OCR: Error refreshing inventory:", err);
+      notify('Failed to refresh inventory data', 'error');
+      return [];
+    }
+  };
   
   // Steps for the OCR process
   const steps = ['Capture Invoice', 'Review Detected Items', 'Process Items'];
@@ -63,21 +77,13 @@ const OCRCapture = () => {
     // Check file type
     const validTypes = ['image/jpeg', 'image/png', 'image/jpg'];
     if (!validTypes.includes(file.type)) {
-      setSnackbar({
-        open: true,
-        message: 'Please select a valid image file (JPEG, PNG)',
-        severity: 'error'
-      });
+      notify('Please select a valid image file (JPEG, PNG)', 'error');
       return;
     }
     
     // Check file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
-      setSnackbar({
-        open: true,
-        message: 'File size exceeds 5MB limit',
-        severity: 'error'
-      });
+      notify('File size exceeds 5MB limit', 'error');
       return;
     }
     
@@ -108,11 +114,7 @@ const OCRCapture = () => {
     console.log("DEBUG OCR: processImage started");
     if (!image) {
       console.error("DEBUG OCR: No image selected");
-      setSnackbar({
-        open: true,
-        message: 'Please select an image first',
-        severity: 'error'
-      });
+      notify('Please select an image first', 'error');
       return false; // Return false on initial error
     }
     
@@ -170,8 +172,10 @@ const OCRCapture = () => {
           name: pItem.name,
           quantity: pItem.quantity || 1, // Default quantity if missing
           unit: pItem.unit || 'pcs',     // Default unit if missing
-          action: matchInfo ? 'update' : 'add', // Default action based on match
+          vendor: pItem.vendor || '',    // Default vendor if missing
+          action: 'add', // Default all items to 'add' action
           id: matchInfo ? matchInfo.id : null,    // Existing inventory ID if matched
+          matchScore: matchInfo ? matchInfo.score : 0, // Match confidence score
         };
       });
       console.log('DEBUG OCR: Initializing selectedItems state:', initialSelectedItems);
@@ -233,30 +237,69 @@ const OCRCapture = () => {
     const itemsToProcess = selectedItems.filter(item => item.action === 'add' || item.action === 'update');
     console.log(`DEBUG OCR: Processing ${itemsToProcess.length} items based on selected actions.`);
     
+    // First try to process all items through the backend API
+    try {
+      console.log("DEBUG OCR: Sending items to backend for processing");
+      const response = await axios.post('/api/ocr/process', {
+        items: itemsToProcess
+      });
+      
+      console.log("DEBUG OCR: Backend processing response:", response.data);
+      
+      // If backend processing was successful, we're done
+      setLoading(false);
+      notify(`Successfully processed ${response.data.items_added} new items and updated ${response.data.items_updated} existing items.`, 'success');
+      
+      // Refresh inventory data
+      await fetchInventory();
+      
+      return true;
+    } catch (apiError) {
+      console.error("DEBUG OCR: Backend processing failed, falling back to individual processing:", apiError);
+      // If backend processing failed, fall back to individual processing
+    }
+    
+    // Fallback: Process items individually if the API call failed
     for (const item of itemsToProcess) {
       try {
         if (item.action === 'add') {
           console.log("DEBUG OCR: processItems - Adding item:", item.name, item.quantity, item.unit);
-          await addItem({ name: item.name, quantity: item.quantity, unit: item.unit || 'pcs' });
-          successCount++;
+          const result = await addItem({ 
+            name: item.name, 
+            quantity: item.quantity, 
+            unit: item.unit || 'pcs', 
+            vendor: item.vendor || ''
+          });
+          
+          if (result.success) {
+            successCount++;
+          } else {
+            throw new Error(result.error);
+          }
         } else if (item.action === 'update') {
           // Ensure item.id is valid before attempting update
           if (!item.id) {
             console.warn("DEBUG OCR: Skipping update for item without ID:", item.name);
-            // Optionally treat as an error or just skip
             continue; 
           }
           console.log("DEBUG OCR: processItems - Updating item ID:", item.id, "with quantity/unit:", item.quantity, item.unit);
-          await updateItem(item.id, { quantity: item.quantity, unit: item.unit || 'pcs' });
-          successCount++;
+          const result = await updateItem(item.id, { 
+            quantity: item.quantity, 
+            unit: item.unit || 'pcs', 
+            vendor: item.vendor || ''
+          });
+          
+          if (result.success) {
+            successCount++;
+          } else {
+            throw new Error(result.error);
+          }
         }
         console.log("DEBUG OCR: processItems - Successfully processed item:", item.name || item.id);
       } catch (err) {
         console.error("DEBUG OCR: Error processing item:", item, err);
         errorCount++;
-        // Update error state, maybe collect errors instead of overwriting
         setError(`Failed to process item: ${item.name || `ID ${item.id}`}. ${err.response?.data?.error || err.message}`);
-        // Stop processing further items on error? Or show summary? Currently continues.
       }
     }
     
@@ -264,16 +307,14 @@ const OCRCapture = () => {
     setLoading(false);
     
     if (errorCount === 0 && successCount > 0) {
-      setSnackbar({ open: true, message: `Successfully processed ${successCount} items.`, severity: 'success' });
+      notify(`Successfully processed ${successCount} items.`, 'success');
     } else if (errorCount > 0) {
-      setSnackbar({ open: true, message: `Processed ${successCount} items with ${errorCount} errors. Check console/error message.`, severity: 'warning' });
+      notify(`Processed ${successCount} items with ${errorCount} errors. Check console/error message.`, 'warning');
     } else if (successCount === 0 && errorCount === 0) {
-       setSnackbar({ open: true, message: 'No items were selected for processing.', severity: 'info' });
+       notify('No items were selected for processing.', 'info');
     }
     
-    // Return true if at least some items were processed, false if major failure occurred
-    // For now, returning true unless the loop itself crashes (which shouldn't happen with try/catch)
-    return errorCount === 0; // Return true only if NO errors occurred
+    return errorCount === 0;
   };
 
   // Handle step navigation
@@ -306,7 +347,7 @@ const OCRCapture = () => {
       // This case might need re-evaluation. If step 1's 'Next' calls processItems,
       // clicking 'Process' on the last step might be redundant or need different logic.
       // For now, let's assume it indicates completion.
-      setSnackbar({ open: true, message: 'Items processed successfully!', severity: 'success' });
+      notify('Items processed successfully!', 'success');
       // Maybe navigate away or reset state here
       // setActiveStep(0); // Reset example
        return; // Don't advance further
@@ -406,9 +447,9 @@ const OCRCapture = () => {
             
             {/* Check selectedItems length instead of potentialItems */}
             {selectedItems.length === 0 ? (
-              <Alert severity="info" sx={{ mb: 2 }}>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                 No reviewable items found or processing failed. Check console/try again.
-              </Alert>
+              </Typography>
             ) : (
               <List>
                 {selectedItems.map((item) => (
@@ -458,44 +499,63 @@ const OCRCapture = () => {
                             >
                               {item.unit}
                             </Typography>
+                            <Typography 
+                              component="span" 
+                              variant="body2" 
+                              color="text.secondary"
+                            >
+                              {item.vendor}
+                            </Typography>
                           </Box>
                         }
                       />
                       <ListItemSecondaryAction>
                         <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                          <IconButton 
-                            color={item.action === 'update' ? 'primary' : 'default'}
+                          <Button 
+                            variant={item.action === 'update' ? 'contained' : 'outlined'}
+                            color="primary"
                             onClick={() => { 
                               console.log(`DEBUG OCR: Update clicked for ${item.tempId}`);
                               handleItemActionChange(item.tempId, 'update')
                             }}
                             disabled={!item.id}
                             title="Update existing item"
+                            size="small"
+                            sx={{ mr: 1, minWidth: '100px' }}
+                            startIcon={<CheckIcon />}
                           >
-                            <CheckIcon />
-                          </IconButton>
+                            Update
+                          </Button>
                           
-                          <IconButton 
-                            color={item.action === 'add' ? 'success' : 'default'}
+                          <Button 
+                            variant={item.action === 'add' ? 'contained' : 'outlined'}
+                            color="success"
                             onClick={() => { 
                               console.log(`DEBUG OCR: Add clicked for ${item.tempId}`);
                               handleItemActionChange(item.tempId, 'add')
                             }}
                             title="Add as new item"
+                            size="small"
+                            sx={{ mr: 1, minWidth: '100px' }}
+                            startIcon={<AddIcon />}
                           >
-                            <AddIcon />
-                          </IconButton>
+                            Add
+                          </Button>
                           
-                          <IconButton 
-                            color={item.action === 'ignore' ? 'error' : 'default'}
+                          <Button 
+                            variant={item.action === 'ignore' ? 'contained' : 'outlined'}
+                            color="error"
                             onClick={() => { 
                               console.log(`DEBUG OCR: Ignore clicked for ${item.tempId}`);
                               handleItemActionChange(item.tempId, 'ignore')
                             }}
                             title="Ignore this item"
+                            size="small"
+                            sx={{ minWidth: '100px' }}
+                            startIcon={<CloseIcon />}
                           >
-                            <CloseIcon />
-                          </IconButton>
+                            Ignore
+                          </Button>
                         </Box>
                       </ListItemSecondaryAction>
                     </ListItem>
@@ -505,7 +565,7 @@ const OCRCapture = () => {
             )}
             
             {extractedText && (
-              <Box sx={{ mt: 3 }}>
+              <Box sx={{ mt: 3, display: 'none' }}>
                 <Typography variant="subtitle1" gutterBottom>
                   Extracted Text
                 </Typography>
@@ -526,9 +586,9 @@ const OCRCapture = () => {
               Confirm Changes
             </Typography>
             
-            <Alert severity="info" sx={{ mb: 3 }}>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
               Please review the changes below before processing.
-            </Alert>
+            </Typography>
             
             <Typography variant="subtitle1" gutterBottom>
               Items to Add
@@ -542,7 +602,7 @@ const OCRCapture = () => {
                     <ListItem key={item.tempId}>
                       <ListItemText
                         primary={item.name}
-                        secondary={`${item.quantity} ${item.unit}`}
+                        secondary={`${item.quantity} ${item.unit} - ${item.vendor}`}
                       />
                     </ListItem>
                   ))}
@@ -569,9 +629,9 @@ const OCRCapture = () => {
                           primary={item.name}
                           secondary={
                             <>
-                              Current: {existingItem?.quantity} {existingItem?.unit}
+                              Current: {existingItem?.quantity} {existingItem?.unit} - {existingItem?.vendor}
                               <br />
-                              New: {item.quantity} {item.unit}
+                              New: {item.quantity} {item.unit} - {item.vendor}
                             </>
                           }
                         />
@@ -609,9 +669,9 @@ const OCRCapture = () => {
           </Stepper>
           
           {error && (
-            <Alert severity="error" sx={{ mb: 3 }}>
+            <Typography variant="body2" color="error.main" sx={{ mb: 3 }}>
               {error}
-            </Alert>
+            </Typography>
           )}
           
           {loading ? (
@@ -644,21 +704,6 @@ const OCRCapture = () => {
           )}
         </Paper>
       </Box>
-      
-      {/* Snackbar for notifications */}
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={6000}
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
-      >
-        <Alert 
-          onClose={() => setSnackbar({ ...snackbar, open: false })} 
-          severity={snackbar.severity}
-          sx={{ width: '100%' }}
-        >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
     </Layout>
   );
 };

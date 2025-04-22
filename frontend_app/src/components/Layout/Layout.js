@@ -20,9 +20,7 @@ import {
   useTheme,
   BottomNavigation,
   BottomNavigationAction,
-  Badge,
-  Snackbar,
-  Alert
+  Badge
 } from '@mui/material';
 import { 
   Menu as MenuIcon, 
@@ -37,23 +35,36 @@ import {
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useNotification } from '../../contexts/NotificationContext';
 
 const Layout = ({ children }) => {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState(null);
   const [mobileNavValue, setMobileNavValue] = useState(0);
-  // Snackbar state for notifications
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
+  const [notificationAnchorEl, setNotificationAnchorEl] = useState(null);
+  const [notifications, setNotifications] = useState([]);
   
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const { dismiss, notify } = useNotification();
   
   // Handler for alert/notification icon: dismiss notifications
-  const handleAlertClick = () => {
-    setSnackbar({ ...snackbar, open: false });
+  const handleAlertClick = (event) => {
+    setNotificationAnchorEl(event.currentTarget);
+  };
+  
+  // Close notifications menu
+  const handleNotificationsClose = () => {
+    setNotificationAnchorEl(null);
+  };
+  
+  // Clear all notifications
+  const handleClearNotifications = () => {
+    setNotifications([]);
+    handleNotificationsClose();
   };
 
   // Set mobile navigation value based on current path
@@ -101,9 +112,10 @@ const Layout = ({ children }) => {
       <Divider />
       <List>
         <ListItem 
-          button 
+          component="div"
           onClick={() => handleNavigation('/')}
           selected={location.pathname === '/'}
+          sx={{ cursor: 'pointer' }}
         >
           <ListItemIcon>
             <DashboardIcon />
@@ -112,9 +124,10 @@ const Layout = ({ children }) => {
         </ListItem>
         
         <ListItem 
-          button 
+          component="div"
           onClick={() => handleNavigation('/inventory')}
           selected={location.pathname.startsWith('/inventory')}
+          sx={{ cursor: 'pointer' }}
         >
           <ListItemIcon>
             <InventoryIcon />
@@ -123,9 +136,10 @@ const Layout = ({ children }) => {
         </ListItem>
         
         <ListItem 
-          button 
+          component="div"
           onClick={() => handleNavigation('/ocr')}
           selected={location.pathname.startsWith('/ocr')}
+          sx={{ cursor: 'pointer' }}
         >
           <ListItemIcon>
             <CameraIcon />
@@ -135,9 +149,10 @@ const Layout = ({ children }) => {
         
         {user?.role === 'admin' && (
           <ListItem 
-            button 
+            component="div"
             onClick={() => handleNavigation('/users')}
             selected={location.pathname.startsWith('/users')}
+            sx={{ cursor: 'pointer' }}
           >
             <ListItemIcon>
               <PeopleIcon />
@@ -147,9 +162,10 @@ const Layout = ({ children }) => {
         )}
         
         <ListItem 
-          button 
+          component="div"
           onClick={() => handleNavigation('/settings')}
           selected={location.pathname.startsWith('/settings')}
+          sx={{ cursor: 'pointer' }}
         >
           <ListItemIcon>
             <SettingsIcon />
@@ -159,7 +175,7 @@ const Layout = ({ children }) => {
       </List>
       <Divider />
       <List>
-        <ListItem button onClick={handleLogout}>
+        <ListItem component="div" onClick={handleLogout} sx={{ cursor: 'pointer' }}>
           <ListItemIcon>
             <LogoutIcon />
           </ListItemIcon>
@@ -191,10 +207,43 @@ const Layout = ({ children }) => {
           </Typography>
           
           <IconButton color="inherit" onClick={handleAlertClick} sx={{ ml: 1 }}>
-            <Badge badgeContent={3} color="error">
+            <Badge badgeContent={notifications.length} color="error" invisible={notifications.length === 0}>
               <NotificationsIcon />
             </Badge>
           </IconButton>
+          
+          <Menu
+            anchorEl={notificationAnchorEl}
+            open={Boolean(notificationAnchorEl)}
+            onClose={handleNotificationsClose}
+            transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+            anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+          >
+            {notifications.length > 0 ? (
+              <>
+                {notifications.map((notification, index) => (
+                  <MenuItem key={index} onClick={() => {
+                    // Handle notification click if needed
+                    handleNotificationsClose();
+                  }}>
+                    {notification.message}
+                  </MenuItem>
+                ))}
+                <Divider />
+                <MenuItem onClick={handleClearNotifications}>
+                  <Typography variant="body2" color="primary" align="center" sx={{ width: '100%' }}>
+                    Clear All Notifications
+                  </Typography>
+                </MenuItem>
+              </>
+            ) : (
+              <MenuItem onClick={handleNotificationsClose}>
+                <Typography variant="body2" color="text.secondary">
+                  No new notifications
+                </Typography>
+              </MenuItem>
+            )}
+          </Menu>
           
           <IconButton
             onClick={handleProfileMenuOpen}
@@ -322,22 +371,6 @@ const Layout = ({ children }) => {
           </BottomNavigation>
         </Paper>
       )}
-      
-      {/* Snackbar for notifications */}
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={4000}
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert
-          onClose={() => setSnackbar({ ...snackbar, open: false })}
-          severity={snackbar.severity || 'info'}
-          sx={{ width: '100%' }}
-        >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
     </Box>
   );
 };

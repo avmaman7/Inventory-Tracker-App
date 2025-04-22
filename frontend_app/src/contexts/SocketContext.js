@@ -11,7 +11,7 @@ export const SocketProvider = ({ children }) => {
 
   useEffect(() => {
     // Initialize socket connection
-    const socketUrl = process.env.REACT_APP_WEBSOCKET_URL || 'http://localhost:5000';
+    const socketUrl = process.env.REACT_APP_WEBSOCKET_URL || 'http://localhost:5002';
     const socketInstance = io(socketUrl, {
       transports: ['websocket'],
       autoConnect: true,

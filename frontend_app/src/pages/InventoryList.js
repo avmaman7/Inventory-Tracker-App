@@ -17,8 +17,6 @@ import {
   TextField, 
   MenuItem, 
   CircularProgress,
-  Snackbar,
-  Alert,
   Divider,
   InputAdornment,
   Tooltip,
@@ -41,6 +39,7 @@ import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout/Layout';
 import { useInventoryUpdates } from '../hooks/useInventoryUpdates';
 import { useSocket } from '../contexts/SocketContext';
+import { useNotification } from '../contexts/NotificationContext';
 
 const InventoryList = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -48,9 +47,8 @@ const InventoryList = () => {
   const [openEditDialog, setOpenEditDialog] = useState(false);
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
-  const [newItem, setNewItem] = useState({ name: '', quantity: 0, unit: 'pcs' });
-  const [editItem, setEditItem] = useState({ name: '', quantity: 0, unit: 'pcs' });
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const [newItem, setNewItem] = useState({ name: '', quantity: 0, unit: 'pcs', vendor: '' });
+  const [editItem, setEditItem] = useState({ name: '', quantity: 0, unit: 'pcs', vendor: '' });
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
   const [filters, setFilters] = useState({ unit: 'all', minQuantity: '', maxQuantity: '' });
   
@@ -64,6 +62,7 @@ const InventoryList = () => {
     updateItem, 
     deleteItem 
   } = useInventoryUpdates();
+  const { notify } = useNotification();
 
   // Handle quick quantity update
   const handleQuantityUpdate = async (id, newQuantity) => {
@@ -72,28 +71,16 @@ const InventoryList = () => {
     const result = await updateItem(id, { quantity: newQuantity });
     
     if (result.success) {
-      setSnackbar({
-        open: true,
-        message: 'Quantity updated successfully',
-        severity: 'success'
-      });
+      notify('Quantity updated successfully', 'success');
     } else {
-      setSnackbar({
-        open: true,
-        message: result.error,
-        severity: 'error'
-      });
+      notify(result.error, 'error');
     }
   };
 
   // Handle add item
   const handleAddItem = async () => {
     if (!newItem.name || !newItem.unit) {
-      setSnackbar({
-        open: true,
-        message: 'Please fill in all required fields',
-        severity: 'error'
-      });
+      notify('Please fill in all required fields', 'error');
       return;
     }
     
@@ -101,29 +88,17 @@ const InventoryList = () => {
     
     if (result.success) {
       setOpenAddDialog(false);
-      setNewItem({ name: '', quantity: 0, unit: 'pcs' });
-      setSnackbar({
-        open: true,
-        message: 'Item added successfully',
-        severity: 'success'
-      });
+      setNewItem({ name: '', quantity: 0, unit: 'pcs', vendor: '' });
+      notify('Item added successfully', 'success');
     } else {
-      setSnackbar({
-        open: true,
-        message: result.error,
-        severity: 'error'
-      });
+      notify(result.error, 'error');
     }
   };
 
   // Handle edit item
   const handleEditItem = async () => {
     if (!editItem.name || !editItem.unit) {
-      setSnackbar({
-        open: true,
-        message: 'Please fill in all required fields',
-        severity: 'error'
-      });
+      notify('Please fill in all required fields', 'error');
       return;
     }
     
@@ -132,18 +107,10 @@ const InventoryList = () => {
     if (result.success) {
       setOpenEditDialog(false);
       setSelectedItem(null);
-      setEditItem({ name: '', quantity: 0, unit: 'pcs' });
-      setSnackbar({
-        open: true,
-        message: 'Item updated successfully',
-        severity: 'success'
-      });
+      setEditItem({ name: '', quantity: 0, unit: 'pcs', vendor: '' });
+      notify('Item updated successfully', 'success');
     } else {
-      setSnackbar({
-        open: true,
-        message: result.error,
-        severity: 'error'
-      });
+      notify(result.error, 'error');
     }
   };
 
@@ -154,17 +121,9 @@ const InventoryList = () => {
     if (result.success) {
       setOpenDeleteDialog(false);
       setSelectedItem(null);
-      setSnackbar({
-        open: true,
-        message: 'Item deleted successfully',
-        severity: 'success'
-      });
+      notify('Item deleted successfully', 'success');
     } else {
-      setSnackbar({
-        open: true,
-        message: result.error,
-        severity: 'error'
-      });
+      notify(result.error, 'error');
     }
   };
 
@@ -238,16 +197,16 @@ const InventoryList = () => {
         
         {/* Connection status indicator */}
         {!connected && (
-          <Alert severity="warning" sx={{ mb: 2 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             You are currently offline. Changes will be synchronized when you reconnect.
-          </Alert>
+          </Typography>
         )}
         
         {/* Error message */}
         {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
+          <Typography variant="body2" color="error" sx={{ mb: 2 }}>
             {error}
-          </Alert>
+          </Typography>
         )}
         
         {/* Loading indicator */}
@@ -265,12 +224,23 @@ const InventoryList = () => {
                     <React.Fragment key={item.id}>
                       {index > 0 && <Divider component="li" />}
                       <ListItem 
-                        button
+                        component="div"
                         onClick={() => navigate(`/inventory/${item.id}`)}
                       >
-                        <ListItemText
-                          primary={item.name}
-                          secondary={`${item.quantity} ${item.unit}`}
+                        <ListItemText 
+                          primary={
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Typography variant="body1" component="span">
+                                {item.name}
+                              </Typography>
+                              {item.vendor && (
+                                <Typography variant="caption" color="text.secondary" component="span" sx={{ ml: 1 }}>
+                                  ({item.vendor})
+                                </Typography>
+                              )}
+                            </Box>
+                          }
+                          secondary={`${item.quantity} ${item.unit}`} 
                         />
                         <ListItemSecondaryAction>
                           <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -310,7 +280,8 @@ const InventoryList = () => {
                                 setEditItem({
                                   name: item.name,
                                   quantity: item.quantity,
-                                  unit: item.unit
+                                  unit: item.unit,
+                                  vendor: item.vendor
                                 });
                                 setOpenEditDialog(true);
                               }}
@@ -372,17 +343,17 @@ const InventoryList = () => {
       <Dialog open={openAddDialog} onClose={() => setOpenAddDialog(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Add New Item</DialogTitle>
         <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="Item Name"
-            type="text"
-            fullWidth
-            variant="outlined"
-            value={newItem.name}
-            onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
-          />
-          <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <TextField
+              autoFocus
+              margin="dense"
+              label="Item Name"
+              type="text"
+              fullWidth
+              variant="outlined"
+              value={newItem.name}
+              onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
+            />
             <TextField
               margin="dense"
               label="Quantity"
@@ -390,7 +361,6 @@ const InventoryList = () => {
               variant="outlined"
               value={newItem.quantity}
               onChange={(e) => setNewItem({ ...newItem, quantity: parseFloat(e.target.value) || 0 })}
-              sx={{ flex: 1 }}
               InputProps={{ inputProps: { min: 0 } }}
             />
             <TextField
@@ -400,7 +370,6 @@ const InventoryList = () => {
               variant="outlined"
               value={newItem.unit}
               onChange={(e) => setNewItem({ ...newItem, unit: e.target.value })}
-              sx={{ flex: 1 }}
             >
               <MenuItem value="pcs">Pieces</MenuItem>
               <MenuItem value="kg">Kilograms</MenuItem>
@@ -410,6 +379,16 @@ const InventoryList = () => {
               <MenuItem value="box">Boxes</MenuItem>
               <MenuItem value="bottle">Bottles</MenuItem>
             </TextField>
+            <TextField
+              margin="dense"
+              label="Vendor (Optional)"
+              type="text"
+              fullWidth
+              variant="outlined"
+              value={newItem.vendor || ''}
+              onChange={(e) => setNewItem({ ...newItem, vendor: e.target.value })}
+              helperText="Enter the supplier or vendor name"
+            />
           </Box>
         </DialogContent>
         <DialogActions>
@@ -422,17 +401,17 @@ const InventoryList = () => {
       <Dialog open={openEditDialog} onClose={() => setOpenEditDialog(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Edit Item</DialogTitle>
         <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="Item Name"
-            type="text"
-            fullWidth
-            variant="outlined"
-            value={editItem.name}
-            onChange={(e) => setEditItem({ ...editItem, name: e.target.value })}
-          />
-          <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <TextField
+              autoFocus
+              margin="dense"
+              label="Item Name"
+              type="text"
+              fullWidth
+              variant="outlined"
+              value={editItem.name}
+              onChange={(e) => setEditItem({ ...editItem, name: e.target.value })}
+            />
             <TextField
               margin="dense"
               label="Quantity"
@@ -460,6 +439,16 @@ const InventoryList = () => {
               <MenuItem value="box">Boxes</MenuItem>
               <MenuItem value="bottle">Bottles</MenuItem>
             </TextField>
+            <TextField
+              margin="dense"
+              label="Vendor (Optional)"
+              type="text"
+              fullWidth
+              variant="outlined"
+              value={editItem.vendor || ''}
+              onChange={(e) => setEditItem({ ...editItem, vendor: e.target.value })}
+              helperText="Enter the supplier or vendor name"
+            />
           </Box>
         </DialogContent>
         <DialogActions>
@@ -548,21 +537,6 @@ const InventoryList = () => {
           </Box>
         </Box>
       </SwipeableDrawer>
-      
-      {/* Snackbar for notifications */}
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={6000}
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
-      >
-        <Alert 
-          onClose={() => setSnackbar({ ...snackbar, open: false })} 
-          severity={snackbar.severity}
-          sx={{ width: '100%' }}
-        >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
     </Layout>
   );
 };

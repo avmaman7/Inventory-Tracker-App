@@ -1,0 +1,35 @@
+services:
+  # Backend API service
+  - type: web
+    name: inventory-tracker-backend
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python backend_api.py
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: PORT
+        value: 10000
+      - key: RENDER
+        value: true
+      - key: GOOGLE_CREDENTIALS_JSON
+        sync: false
+      - key: OCR_DEBUG_MODE
+        value: false
+    disk:
+      name: uploads
+      mountPath: /opt/render/project/src/static/uploads
+      sizeGB: 1
+
+    # Uncomment if you need a database
+    # databases:
+    #  - name: inventory_db
+    #    plan: free # or starter, etc.
+
+    # Secret files (for Google Cloud credentials)
+    secrets:
+      - name: google-credentials
+        mountPath: /etc/secrets/
+        # You'll need to upload your Google Cloud credentials JSON file in the Render dashboard

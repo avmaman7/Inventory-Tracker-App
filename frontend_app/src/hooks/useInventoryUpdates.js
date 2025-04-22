@@ -69,9 +69,15 @@ export const useInventoryUpdates = (initialItems = []) => {
   // Function to add a new item
   const addItem = async (itemData) => {
     try {
+      console.log('Adding item with data:', itemData);
       const response = await axios.post('/api/items', itemData);
-      // The socket will handle adding the item to the state
-      return { success: true, data: response.data };
+      
+      // Manually update the state since socket might not be connected
+      const newItem = response.data;
+      setItems(prevItems => [...prevItems, newItem]);
+      
+      console.log('Item added successfully:', newItem);
+      return { success: true, data: newItem };
     } catch (err) {
       console.error('Error adding item:', err);
       return { 
@@ -84,9 +90,19 @@ export const useInventoryUpdates = (initialItems = []) => {
   // Function to update an item
   const updateItem = async (id, itemData) => {
     try {
+      console.log('Updating item with ID:', id, 'and data:', itemData);
       const response = await axios.put(`/api/items/${id}`, itemData);
-      // The socket will handle updating the item in the state
-      return { success: true, data: response.data };
+      
+      // Manually update the state since socket might not be connected
+      const updatedItem = response.data;
+      setItems(prevItems => 
+        prevItems.map(item => 
+          item.id === updatedItem.id ? updatedItem : item
+        )
+      );
+      
+      console.log('Item updated successfully:', updatedItem);
+      return { success: true, data: updatedItem };
     } catch (err) {
       console.error('Error updating item:', err);
       return { 
